@@ -51,16 +51,13 @@ Godot 工程 ──▶ 代码摄入 ──▶ LLM 语义分析 ──▶ 规格�
 
 ## 快速开始
 
+只需要 **Python 3.10+**（已加入 PATH）。在仓库根目录直接运行 `gla` 即可 —— **首次运行会自动创建 `.venv` 并安装依赖**，无需手动配置。
+
 ```bash
-# 1. 安装（只需一次）
-python -m venv .venv
-.venv\Scripts\python -m pip install -e ".[dev]"
-
-# 2. 在仓库根目录直接输入 gla（不带参数）→ 打开欢迎界面
 cd C:\Users\yy197\Documents\GitHub\GameLinkAgent
-gla
+gla                                             # 打开欢迎界面（首次会提示输入 LLM API key）
 
-# 3. 之后可直接执行命令（API key 已存在用户目录，无需每次输入）
+# 之后可直接执行命令（API key 已存用户目录，无需每次输入）
 gla doctor                                      # 检查环境（Python / Godot / LLM / 部署）
 gla inspect examples/snake-single               # 查看工程摘要
 gla analyze examples/snake-single               # LLM 分析 → 中文报告（写 specs/snake-single-report.md）
@@ -71,6 +68,9 @@ gla generate examples/snake-single --specs specs --out out/snake-gen
 gla verify examples/snake-mp --specs specs      # 规格 ↔ 实现一致性校验
 gla deploy out/snake-gen                        # 导出 headless 服务端 + 部署说明（out/snake-gen/dist）
 ```
+
+> 想手动初始化、或需要跑测试/开发（含 pytest、ruff），用：
+> `python -m venv .venv` 然后 `.venv\Scripts\python -m pip install -e ".[dev]"`
 
 ### 欢迎界面
 
@@ -91,7 +91,7 @@ gla deploy out/snake-gen                        # 导出 headless 服务端 + �
 
 ## 环境要求
 
-- Python ≥ 3.10
+- Python ≥ 3.10（`gla` 首次运行会自动创建 `.venv` 并安装依赖）
 - **Godot 4.x**（分析校验与导出服务端需要）。本机为 **Godot 4.7.2**，位于 `C:\D\GodotEngine`；
   在 `.env` 中设置 `GAMELINK_GODOT_BIN` 指向引擎可执行文件即可（建议用 `*_console.exe`）。
 - 一台 Windows 云服务器（部署目标）
