@@ -1,18 +1,17 @@
 <#
 .SYNOPSIS
-  Register the generated Godot headless server as a Windows service using NSSM.
+  把 GameLink 导出的服务端注册为 Windows 服务（用 NSSM 实现开机自启 + 崩溃重启）。
 
 .DESCRIPTION
-  Phase 1 deployment helper. Run on the Windows cloud server after the server
-  build has been uploaded. Requires nssm.exe on PATH (https://nssm.cc/).
+  需要先安装 NSSM（https://nssm.cc/）并把它加入 PATH。
 
 .EXAMPLE
-  .\install_service.ps1 -ServerExe C:\GameLink\server\gamelink-server.exe -Port 7000
+  .\install_service.ps1 -ServerExe C:\GameLink\{{ slug }}\{{ exe_name }} -Port {{ port }}
 #>
 param(
     [Parameter(Mandatory = $true)][string]$ServerExe,
-    [int]$Port = 7000,
-    [string]$ServiceName = "GameLinkServer",
+    [int]$Port = {{ port }},
+    [string]$ServiceName = "{{ service_name }}",
     [string]$LogDir = "C:\GameLink\logs"
 )
 
@@ -20,15 +19,15 @@ $ErrorActionPreference = "Stop"
 
 $nssm = (Get-Command nssm.exe -ErrorAction SilentlyContinue).Source
 if (-not $nssm) {
-    throw "nssm.exe not found on PATH. Download NSSM from https://nssm.cc/ and add it to PATH."
+    throw "未找到 nssm.exe，请先从 https://nssm.cc/ 下载并加入 PATH。"
 }
 if (-not (Test-Path $ServerExe)) {
-    throw "Server executable not found: $ServerExe"
+    throw "服务端程序不存在：$ServerExe"
 }
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-    Write-Host "Stopping and removing existing service '$ServiceName'..."
+    Write-Host "已存在同名服务，先停止并删除：$ServiceName"
     & $nssm stop $ServiceName | Out-Null
     & $nssm remove $ServiceName confirm | Out-Null
 }
@@ -39,4 +38,4 @@ if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
 & $nssm set $ServiceName Start SERVICE_AUTO_START
 & $nssm start $ServiceName
 
-Write-Host "Service '$ServiceName' installed and started (UDP $Port)."
+Write-Host "服务 '$ServiceName' 已安装并启动（UDP $Port）。"

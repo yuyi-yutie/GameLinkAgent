@@ -1,0 +1,23 @@
+<#
+.SYNOPSIS
+  放通服务端所需的 UDP 端口（Godot 的 ENet 走 UDP，很容易被防火墙/安全组挡住）。
+
+.EXAMPLE
+  .\open_firewall.ps1 -Port {{ port }}
+#>
+param(
+    [int]$Port = {{ port }},
+    [string]$RuleName = "GameLink Server UDP"
+)
+
+$ErrorActionPreference = "Stop"
+
+if (Get-NetFirewallRule -DisplayName "$RuleName $Port" -ErrorAction SilentlyContinue) {
+    Write-Host "UDP $Port 的防火墙规则已存在。"
+} else {
+    New-NetFirewallRule -DisplayName "$RuleName $Port" `
+        -Direction Inbound -Protocol UDP -LocalPort $Port -Action Allow | Out-Null
+    Write-Host "已在 Windows 防火墙放通入站 UDP $Port。"
+}
+
+Write-Host "提醒：还要在云厂商的安全组里放行 UDP $Port。"

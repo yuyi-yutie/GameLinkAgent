@@ -25,8 +25,14 @@ Rules:
   moments (food eaten, game over).
 - Only reference nodes, autoloads and scripts that actually appear in the project.
 
+Language:
+- Write the "report" field in Simplified Chinese (简体中文), as Markdown.
+- Write human-readable "description" fields in Simplified Chinese too.
+- Keep identifiers, file paths, node/class names and API names (e.g. @rpc,
+  MultiplayerSynchronizer, res://scripts/main.gd) in their original form.
+
 Return ONE JSON object with exactly these keys:
-  "report":         short human-readable analysis (markdown string)
+  "report":         the analysis written in Chinese (markdown string)
   "protocol_spec":  object conforming to the protocol schema below
   "architecture_spec": object conforming to the architecture schema below
 Do not wrap the JSON in prose outside the object.

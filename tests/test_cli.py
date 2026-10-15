@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -47,16 +48,76 @@ def test_generate_from_example_specs(tmp_path):
     assert "[autoload]" in (out / "project.godot").read_text(encoding="utf-8")
     assert (out / "gamelink" / "protocol.spec.yaml").exists()
 
+    # Deployment artifacts: an export preset and a manifest for `deploy`.
+    assert (out / "export_presets.cfg").exists()
+    manifest = json.loads((out / "gamelink" / "server.json").read_text(encoding="utf-8"))
+    assert manifest["exe_name"].endswith("-server.exe")
+    assert manifest["preset"]
 
-def test_deploy_dry_run(tmp_path):
+
+def test_write_report_uses_project_slug(tmp_path):
+    from gamelink.cli import _write_report
+
+    path = _write_report(tmp_path, "Snake Single", "# 分析\n\n正文")
+    assert path.name == "snake-single-report.md"
+    assert path.read_text(encoding="utf-8").startswith("# 分析")
+
+
+def test_deploy_plan_reads_manifest(tmp_path):
+    from gamelink.config import Settings
+    from gamelink.deploy import build_deploy_plan
+    from gamelink.options import DesignerOptions
+
     server = tmp_path / "server"
-    server.mkdir()
-    result = runner.invoke(app, ["deploy", str(server), "--dry-run"])
-    assert result.exit_code == 0, result.stdout
-    assert "dry-run" in result.stdout
+    (server / "gamelink").mkdir(parents=True)
+    (server / "gamelink" / "server.json").write_text(
+        json.dumps(
+            {
+                "game": "Snake Single",
+                "slug": "snake-single",
+                "exe_name": "snake-single-server.exe",
+                "service_name": "snake-single-server",
+                "port": 7000,
+                "max_players": 4,
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan = build_deploy_plan(server, Settings.load(tmp_path / "none.env"), DesignerOptions())
+    assert plan.exe_name == "snake-single-server.exe"
+    assert plan.port == 7000
+    assert plan.max_players == 4
+    assert plan.dist_dir == server / "dist"
 
 
 def test_doctor():
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     assert "python" in result.stdout
+
+
+def test_help_lists_commands_and_shows_detail():
+    listing = runner.invoke(app, ["help"])
+    assert listing.exit_code == 0, listing.stdout
+    assert "analyze" in listing.stdout
+
+    detail = runner.invoke(app, ["help", "analyze"])
+    assert detail.exit_code == 0, detail.stdout
+    assert "用法" in detail.stdout
+    assert "--specs" in detail.stdout
+
+
+def test_render_command_help_unknown_returns_false():
+    from rich.console import Console
+
+    from gamelink import ui
+
+    assert ui.render_command_help(Console(), "definitely-not-a-command") is False
+
+
+def test_command_docs_are_consistent():
+    from gamelink import ui
+
+    names = [doc.name for doc in ui.COMMANDS]
+    assert len(names) == len(set(names)), "command names must be unique"
+    assert all(doc.group in ui.GROUPS for doc in ui.COMMANDS)

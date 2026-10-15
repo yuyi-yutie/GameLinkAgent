@@ -15,6 +15,7 @@ they do not change the generator.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from dataclasses import dataclass, field
@@ -24,10 +25,12 @@ from typing import Any
 from gamelink.errors import GenerateError
 from gamelink.ingest import GodotProject
 from gamelink.options import DesignerOptions
-from gamelink.resources import template_path
+from gamelink.resources import render_template
 from gamelink.spec.io import dump_yaml
+from gamelink.util import slugify
 
 DEFAULT_PORT = 7000
+SERVER_PRESET = "Dedicated Server"
 
 TRANSPORT_CLASSES = {
     "enet": "ENetMultiplayerPeer",
@@ -37,6 +40,7 @@ TRANSPORT_CLASSES = {
 
 # Files the generator owns, relative to the project root -> template path.
 _GENERATED = {
+    "export_presets.cfg": "godot/export_presets.cfg.tmpl",
     "scripts/network_manager.gd": "godot/NetworkManager.gd.tmpl",
     "scripts/main.gd": "godot/main.gd.tmpl",
     "scripts/snake.gd": "godot/snake.gd.tmpl",
@@ -55,31 +59,43 @@ class GenerateResult:
     todos: list[str] = field(default_factory=list)
 
 
-def _render(text: str, context: dict[str, Any]) -> str:
-    for key, value in context.items():
-        text = text.replace("{{ " + key + " }}", str(value))
-        text = text.replace("{{" + key + "}}", str(value))
-    return text
-
-
 def _render_template(rel_path: str, context: dict[str, Any]) -> str:
-    source = template_path(*rel_path.split("/"))
-    if not source.exists():
-        raise GenerateError(f"missing template: {rel_path}")
-    return _render(source.read_text(encoding="utf-8"), context)
+    try:
+        return render_template(context, *rel_path.split("/"))
+    except FileNotFoundError as exc:
+        raise GenerateError(str(exc)) from exc
+
+
+_POSITION_HINTS = {"pos", "position", "food"}
+
+
+def _has_position_param(message: dict[str, Any]) -> bool:
+    for param in message.get("params") or []:
+        if param.get("name") in _POSITION_HINTS and "Vector2i" in str(param.get("type", "")):
+            return True
+    return False
 
 
 def _rpc_names(protocol: dict[str, Any]) -> tuple[str, str]:
-    """Pick the client->server and server->client RPC names from the spec."""
-    rpc_input, rpc_food = "submit_direction", "sync_food"
-    for message in protocol.get("messages", []):
-        if message.get("id") and message.get("direction") == "C2S":
-            rpc_input = message["id"]
-            break
-    for message in protocol.get("messages", []):
-        if message.get("id") and message.get("direction") == "S2C":
-            rpc_food = message["id"]
-            break
+    """Pick the client->server intent RPC and the server->client food RPC names."""
+    messages = protocol.get("messages", [])
+    rpc_input = next(
+        (m["id"] for m in messages if m.get("id") and m.get("direction") == "C2S"),
+        "submit_direction",
+    )
+    rpc_food = next(
+        (
+            m["id"]
+            for m in messages
+            if m.get("id") and m.get("direction") == "S2C" and _has_position_param(m)
+        ),
+        None,
+    )
+    if rpc_food is None:
+        rpc_food = next(
+            (m["id"] for m in messages if m.get("id") and m.get("direction") == "S2C"),
+            "sync_food",
+        )
     return rpc_input, rpc_food
 
 
@@ -113,8 +129,14 @@ def generate_server(
     shutil.copytree(project.root, out, ignore=_IGNORE)
 
     rpc_input, rpc_food = _rpc_names(protocol)
+    game = str(protocol.get("game", project.name))
+    slug = slugify(game)
     context: dict[str, Any] = {
-        "game": protocol.get("game", project.name),
+        "game": game,
+        "slug": slug,
+        "exe_name": f"{slug}-server.exe",
+        "service_name": f"{slug}-server",
+        "preset": SERVER_PRESET,
         "transport_class": TRANSPORT_CLASSES.get(options.transport, "ENetMultiplayerPeer"),
         "port": DEFAULT_PORT,
         "tick_rate": architecture.get("tick_rate", options.tick_rate),
@@ -142,6 +164,22 @@ def generate_server(
 
     result.files.append(dump_yaml(protocol, out / "gamelink/protocol.spec.yaml"))
     result.files.append(dump_yaml(architecture, out / "gamelink/server-architecture.spec.yaml"))
+
+    manifest = {
+        "game": game,
+        "slug": slug,
+        "exe_name": context["exe_name"],
+        "service_name": context["service_name"],
+        "preset": SERVER_PRESET,
+        "port": DEFAULT_PORT,
+        "max_players": options.max_players,
+        "transport": options.transport,
+    }
+    manifest_path = out / "gamelink" / "server.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    result.files.append(manifest_path)
 
     for refactor in architecture.get("refactors", []):
         result.todos.append(

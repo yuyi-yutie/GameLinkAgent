@@ -1,0 +1,104 @@
+# {{ game }} 联机服务端部署说明
+
+本目录下的 `{{ exe_name }}` 是从你的 Godot 工程导出的**专用服务端**（headless，无窗口）。
+
+| 项目 | 值 |
+| --- | --- |
+| 游戏 | {{ game }} |
+| 默认端口 | **UDP {{ port }}** |
+| 最大玩家 | {{ max_players }} |
+| 构建平台 | Windows x86_64 |
+| Windows 服务名 | `{{ service_name }}` |
+
+---
+
+## 一、服务器要求
+
+- Windows Server 2016 / Windows 10 及以上，**64 位**
+- 至少 1 核 CPU、1 GB 内存
+- 一个可被公网访问的 **UDP 端口**（默认 `{{ port }}`）
+
+## 二、需要上传的文件
+
+把整个目录上传到服务器，例如 `C:\GameLink\{{ slug }}`：
+
+```
+{{ slug }}/
+├── {{ exe_name }}                # 服务端主程序（单文件，已内嵌资源）
+├── 使用说明.md                    # 本文件
+└── scripts/
+    ├── open_firewall.ps1         # 放通 UDP 端口
+    └── install_service.ps1       # 用 NSSM 注册为 Windows 服务
+```
+
+## 三、部署步骤
+
+### 1. 放通防火墙的 UDP 端口
+
+以**管理员**身份打开 PowerShell：
+
+```powershell
+cd C:\GameLink\{{ slug }}
+.\scripts\open_firewall.ps1 -Port {{ port }}
+```
+
+> 还要去**云厂商控制台的安全组**里放行 UDP `{{ port }}`。这是「服务端明明在跑、客户端却连不上」最常见的原因。
+
+### 2. 先手动试跑一次（推荐）
+
+```powershell
+.\{{ exe_name }} --headless --server
+```
+
+看到 `GameLink: server started (id 1)` 之类的输出就说明服务端正常。按 `Ctrl+C` 停止。
+
+### 3. 注册为 Windows 服务（开机自启 + 崩溃自动重启）
+
+需要先安装 [NSSM](https://nssm.cc/)（把 `nssm.exe` 放到 PATH 里）：
+
+```powershell
+cd C:\GameLink\{{ slug }}
+.\scripts\install_service.ps1 -ServerExe "C:\GameLink\{{ slug }}\{{ exe_name }}" -Port {{ port }}
+```
+
+### 4. 客户端连接
+
+在游戏客户端填入服务器地址（客户端按方向键即可联机）：
+
+```
+<服务器公网IP>:{{ port }}
+```
+
+## 四、日常运维
+
+| 操作 | 命令 |
+| --- | --- |
+| 查看状态 | `Get-Service {{ service_name }}` |
+| 启动 | `Start-Service {{ service_name }}` |
+| 停止 | `Stop-Service {{ service_name }}` |
+| 重启 | `Restart-Service {{ service_name }}` |
+| 查看日志 | `Get-Content C:\GameLink\logs\server.log -Tail 100 -Wait` |
+| 卸载服务 | `nssm remove {{ service_name }} confirm` |
+
+## 五、故障排查
+
+- **客户端连不上**
+  1. 确认服务在跑：`Get-Service {{ service_name }}`
+  2. 确认防火墙规则存在：`Get-NetFirewallRule -DisplayName "*{{ port }}*"`
+  3. 确认**云安全组**已放行 UDP `{{ port }}`
+  4. 本机自测：`netstat -an | findstr {{ port }}`
+- **端口被占用**：`netstat -ano | findstr {{ port }}`，换端口或结束占用进程
+- **服务启动后立刻停止**：先前台跑一次 `.\{{ exe_name }} --headless --server` 看具体报错
+- **看不到日志**：`install_service.ps1` 会把 stdout/stderr 写到 `C:\GameLink\logs\`
+
+## 六、卸载
+
+```powershell
+Stop-Service {{ service_name }}
+nssm remove {{ service_name }} confirm
+Remove-NetFirewallRule -DisplayName "*{{ port }}*"
+```
+
+---
+
+> 本说明由 GameLink Agent 自动生成。若改了端口或服务名，请同步修改上面的命令。

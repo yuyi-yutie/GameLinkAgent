@@ -7,8 +7,10 @@ way in a source checkout and in an installed wheel.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 
 def package_root() -> Path:
@@ -29,3 +31,15 @@ def templates_root() -> Path:
 def template_path(*parts: str) -> Path:
     """Path to a template file, e.g. ``template_path("godot", "NetworkManager.gd.tmpl")``."""
     return templates_root().joinpath(*parts)
+
+
+def render_template(context: Mapping[str, Any], *parts: str) -> str:
+    """Read a bundled template and substitute ``{{ key }}`` placeholders."""
+    path = template_path(*parts)
+    if not path.exists():
+        raise FileNotFoundError(f"missing template: {'/'.join(parts)}")
+    text = path.read_text(encoding="utf-8")
+    for key, value in context.items():
+        text = text.replace("{{ " + key + " }}", str(value))
+        text = text.replace("{{" + key + "}}", str(value))
+    return text

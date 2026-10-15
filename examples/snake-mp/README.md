@@ -41,7 +41,7 @@
 godot --headless --path examples/snake-mp --server
 ```
 
-`main.gd` 检测到 `--server` 会自动 Host。云服务器上配合 `deploy/windows/install_service.ps1` 注册为 Windows 服务。
+`main.gd` 检测到 `--server` 会自动 Host。要打包成可部署的服务端，用 `gla deploy <工程目录>`（会导出单文件服务端并生成 `使用说明.md`）。
 
 > 注意：**首次**用命令行 `godot --headless --path ...` 从源码运行前，先跑一次
 > `godot --headless --path examples/snake-mp --editor --quit` 完成导入；

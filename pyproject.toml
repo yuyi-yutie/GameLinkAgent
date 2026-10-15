@@ -29,6 +29,7 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]
 gamelink = "gamelink.cli:app"
+gla = "gamelink.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gamelink"]

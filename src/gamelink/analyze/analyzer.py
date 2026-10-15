@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from gamelink.analyze.llm import LLMClient
+from gamelink.analyze.llm import CONTENT, LLMClient
 from gamelink.analyze.prompts import build_analysis_prompt
 from gamelink.config import Settings
 from gamelink.errors import AnalysisError
@@ -33,15 +34,25 @@ class Analyzer:
         self.settings = settings
         self.llm = LLMClient(settings.llm)
 
-    def analyze(self, project: GodotProject, options: DesignerOptions) -> AnalysisResult:
+    def analyze(
+        self,
+        project: GodotProject,
+        options: DesignerOptions,
+        on_chunk: Callable[[str, str], None] | None = None,
+    ) -> AnalysisResult:
         system, user = build_analysis_prompt(
             project_summary=project.summary(),
             options=options,
             protocol_schema=load_schema(PROTOCOL_SCHEMA),
             architecture_schema=load_schema(ARCHITECTURE_SCHEMA),
         )
-        raw = self.llm.complete(system, user)
-        data = extract_json(raw)
+        parts: list[str] = []
+        for kind, text in self.llm.stream(system, user):
+            if kind == CONTENT:
+                parts.append(text)
+            if on_chunk is not None:
+                on_chunk(kind, text)
+        data = extract_json("".join(parts))
 
         protocol = data.get("protocol_spec")
         architecture = data.get("architecture_spec")
