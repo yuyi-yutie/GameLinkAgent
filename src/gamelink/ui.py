@@ -12,6 +12,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.text import Text
 
 from gamelink import __version__
 from gamelink.config import (
@@ -105,9 +106,12 @@ COMMANDS: tuple[CommandDoc, ...] = (
     CommandDoc(
         name="config",
         group="配置与工具",
-        summary="配置 LLM（API key / 端点 / 模型）",
+        summary="配置 LLM（API key / 端点 / 模型）或 Godot 引擎路径",
         usage="gla config",
         notes=(
+            "选项 1：LLM —— API key / 端点 / 模型。",
+            "选项 2：Godot 引擎 —— 输入引擎所在文件夹（如 C:\\D\\GodotEngine），",
+            "         会自动识别其中的可执行文件并让你确认。",
             "保存到用户目录，不写入仓库：",
             "Windows: %APPDATA%\\GameLinkAgent\\config.json",
             "其他:    ~/.config/gamelink/config.json",
@@ -168,9 +172,14 @@ def _status_line(console: Console, settings: Settings) -> None:
         + "   "
         + f"Godot [{'green' if godot_ok else 'yellow'}]{'ok' if godot_ok else 'warn'}[/]"
     )
-    console.print(f"  配置 [dim]{user_config_path()}[/dim]")
+    console.print(Text(f"  配置 {user_config_path()}", style="dim"))
+    missing = []
     if not llm_ok:
-        console.print("  [yellow]尚未配置 LLM API key —— 输入 `config` 配置。[/yellow]")
+        missing.append("LLM API key")
+    if not godot_ok:
+        missing.append("Godot 引擎路径")
+    if missing:
+        console.print(f"  [yellow]尚未配置：{'、'.join(missing)} —— 输入 `config` 配置。[/yellow]")
     console.print()
 
 
@@ -216,6 +225,85 @@ def render_command_help(console: Console, name: str) -> bool:
             console.print(f"    {example}", markup=False, highlight=False)
     console.print()
     return True
+
+
+def configure(console: Console) -> None:
+    """Configuration menu: LLM credentials, or the Godot engine path."""
+    console.print("[bold]配置[/bold]")
+    console.print("  1) LLM（API key / 端点 / 模型）")
+    console.print("  2) Godot 引擎路径")
+    console.print("  0) 取消")
+    choice = Prompt.ask("请选择", choices=["1", "2", "0"], default="0")
+    if choice == "1":
+        configure_llm(console)
+    elif choice == "2":
+        configure_godot(console)
+    else:
+        console.print("[dim]已取消。[/dim]")
+
+
+def _godot_candidates(target: Path) -> list[Path]:
+    """Executables to consider for a Godot path (a file, or a folder to scan)."""
+    if target.is_file():
+        return [target]
+    if target.is_dir():
+        return sorted(target.glob("*.exe"))
+    return []
+
+
+def _godot_rank(path: Path) -> tuple[int, str]:
+    """Prefer a Godot build, and the ``*_console.exe`` variant (captures stdout)."""
+    name = path.name.lower()
+    score = int("godot" in name) * 2 + int(name.endswith("_console.exe"))
+    return (score, name)
+
+
+def _choose_godot_executable(console: Console, candidates: list[Path]) -> Path | None:
+    if len(candidates) == 1:
+        return candidates[0]
+    best = max(candidates, key=_godot_rank)
+    console.print("  找到多个可执行文件：")
+    for index, path in enumerate(candidates, start=1):
+        mark = "   ← 推荐" if path == best else ""
+        console.print(f"    {index}) {path.name}{mark}", markup=False, highlight=False)
+    choices = [str(index) for index in range(1, len(candidates) + 1)]
+    answer = Prompt.ask(
+        "  选择编号（回车用推荐项）",
+        choices=choices,
+        default=str(candidates.index(best) + 1),
+    )
+    return candidates[int(answer) - 1]
+
+
+def configure_godot(console: Console) -> None:
+    """Prompt for the Godot engine location and save it to the user config."""
+    settings = Settings.load()
+    console.print("[bold]配置 Godot 引擎[/bold]")
+    console.print(Text(f"  当前：{settings.godot_bin or '(未配置)'}"))
+    console.print("  输入 Godot 所在文件夹（例如 C:\\D\\GodotEngine），或直接输入可执行文件路径")
+    raw = (Prompt.ask("  路径", default="") or "").strip().strip('"')
+    if not raw:
+        console.print("[yellow]未输入，已跳过。[/yellow]")
+        return
+
+    target = Path(raw).expanduser()
+    if not target.exists():
+        console.print(Text(f"路径不存在：{target}", style="red"))
+        return
+
+    candidates = _godot_candidates(target)
+    if not candidates:
+        console.print(Text(f"在 {target} 里没有找到 .exe 可执行文件。", style="red"))
+        return
+
+    chosen = _choose_godot_executable(console, candidates)
+    if chosen is None:
+        console.print("[yellow]已取消。[/yellow]")
+        return
+
+    save_user_config({"GAMELINK_GODOT_BIN": str(chosen)})
+    console.print(Text(f"已保存 GAMELINK_GODOT_BIN = {chosen}", style="green"))
+    console.print(Text(f"配置文件：{user_config_path()}", style="dim"))
 
 
 def configure_llm(console: Console) -> None:

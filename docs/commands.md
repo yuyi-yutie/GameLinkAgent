@@ -84,11 +84,27 @@ gla deploy out/snake-gen
 
 | 命令 | 说明 |
 | --- | --- |
-| `gla config` | 配置 LLM（API key / 端点 / 模型），保存到用户目录 |
+| `gla config` | 配置 LLM（API key / 端点 / 模型）或 Godot 引擎路径，保存到用户目录 |
 | `gla doctor` | 检查环境（Python / Godot / LLM / 部署 / 用户配置） |
 | `gla shell` | 进入交互式欢迎界面（等价于不带参数运行 `gla`） |
 | `gla help [命令]` | 命令列表，或某个命令的详细用法 |
 | `gla version` | 显示版本 |
+
+### `gla config`
+
+进入后会先让你选择配置项：
+
+```
+配置
+  1) LLM（API key / 端点 / 模型）
+  2) Godot 引擎路径
+  0) 取消
+```
+
+- **选项 1 · LLM**：依次输入 API 端点、模型、API key（回车用默认值）。
+- **选项 2 · Godot 引擎**：输入 Godot 所在**文件夹**（如 `C:\D\GodotEngine`），会自动扫描其中的可执行文件；若有多个会让你选（默认推荐 `*_console.exe`，它能捕获命令行输出）。也可以直接输入某个可执行文件的完整路径。
+
+两项都保存到同一个用户配置文件。
 
 ## 配置文件与优先级
 

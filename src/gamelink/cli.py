@@ -163,8 +163,8 @@ def version() -> None:
 
 @app.command()
 def config() -> None:
-    """配置 LLM（API key / 端点 / 模型），保存到用户目录。"""
-    ui.configure_llm(console)
+    """配置 LLM（API key / 端点 / 模型）或 Godot 引擎路径，保存到用户目录。"""
+    ui.configure(console)
 
 
 @app.command("help")

@@ -121,3 +121,34 @@ def test_command_docs_are_consistent():
     names = [doc.name for doc in ui.COMMANDS]
     assert len(names) == len(set(names)), "command names must be unique"
     assert all(doc.group in ui.GROUPS for doc in ui.COMMANDS)
+
+
+def test_godot_candidate_selection(tmp_path):
+    from gamelink import ui
+
+    for name in (
+        "Godot_v4.7.2-stable_win64.exe",
+        "Godot_v4.7.2-stable_win64_console.exe",
+        "unrelated.exe",
+        "notes.txt",
+    ):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+
+    candidates = ui._godot_candidates(tmp_path)
+    assert len(candidates) == 3
+    assert all(path.suffix == ".exe" for path in candidates)
+    assert max(candidates, key=ui._godot_rank).name == "Godot_v4.7.2-stable_win64_console.exe"
+
+
+def test_godot_candidates_accepts_a_file(tmp_path):
+    from gamelink import ui
+
+    exe = tmp_path / "godot.exe"
+    exe.write_text("x", encoding="utf-8")
+    assert ui._godot_candidates(exe) == [exe]
+
+
+def test_godot_candidates_empty_folder(tmp_path):
+    from gamelink import ui
+
+    assert ui._godot_candidates(tmp_path) == []
