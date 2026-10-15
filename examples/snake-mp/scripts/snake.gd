@@ -1,0 +1,62 @@
+class_name Snake
+extends Node2D
+
+## One player's snake. Holds authoritative state that the server replicates
+## via this node's MultiplayerSynchronizer (created in main.gd).
+##
+## The client never mutates `segments`; it only reads the replicated value and
+## draws it. `direction`/`pending` are server-only simulation fields.
+
+const CELL := 32
+
+var peer_id: int = 0
+var segments: Array[Vector2i] = []
+var direction: Vector2i = Vector2i.RIGHT
+var pending: Vector2i = Vector2i.RIGHT
+var score: int = 0
+var alive: bool = true
+
+
+func setup(start: Vector2i, dir: Vector2i) -> void:
+	direction = dir
+	pending = dir
+	segments = []
+	for i in 3:
+		segments.append(start - dir * i)
+
+
+func set_intent(dir: Vector2i) -> void:
+	if dir != -direction:
+		pending = dir
+
+
+func next_head() -> Vector2i:
+	return segments[0] + pending
+
+
+func commit(grow: bool) -> void:
+	direction = pending
+	segments.insert(0, segments[0] + direction)
+	if not grow:
+		segments.pop_back()
+
+
+func body_without_head() -> Array[Vector2i]:
+	if segments.is_empty():
+		return []
+	return segments.slice(0, segments.size() - 1)
+
+
+func debug_line() -> String:
+	var head := segments[0] if not segments.is_empty() else Vector2i.ZERO
+	return "peer %d len %d head %s score %d" % [peer_id, segments.size(), str(head), score]
+
+
+func _process(_delta: float) -> void:
+	queue_redraw()
+
+
+func _draw() -> void:
+	for i in segments.size():
+		var color := Color(0.4, 0.9, 0.45) if i == 0 else Color(0.22, 0.6, 0.32)
+		draw_rect(Rect2(Vector2(segments[i]) * CELL, Vector2(CELL, CELL)), color)

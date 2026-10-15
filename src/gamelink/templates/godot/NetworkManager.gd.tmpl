@@ -1,0 +1,34 @@
+# GameLink Agent — generated network manager (autoload).
+# Game: {{ game }} | Transport: {{ transport_class }} | Port: {{ port }}
+extends Node
+
+signal session_started(is_server: bool)
+
+const DEFAULT_PORT := {{ port }}
+const MAX_PLAYERS := {{ max_players }}
+
+var peer: MultiplayerPeer
+
+
+func host(port: int = DEFAULT_PORT) -> Error:
+	var server := {{ transport_class }}.new()
+	var err := server.create_server(port, MAX_PLAYERS)
+	if err != OK:
+		push_error("failed to start server on port %d (error %d)" % [port, err])
+		return err
+	peer = server
+	multiplayer.multiplayer_peer = server
+	session_started.emit(true)
+	return OK
+
+
+func join(address: String, port: int = DEFAULT_PORT) -> Error:
+	var client := {{ transport_class }}.new()
+	var err := client.create_client(address, port)
+	if err != OK:
+		push_error("failed to connect to %s:%d (error %d)" % [address, port, err])
+		return err
+	peer = client
+	multiplayer.multiplayer_peer = client
+	session_started.emit(false)
+	return OK

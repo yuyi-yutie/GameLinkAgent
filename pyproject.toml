@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gamelink-agent"
+version = "0.0.1"
+description = "GameLink Agent — 网络语义驱动的游戏服务端自动生成与部署智能体"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "yu" }]
+keywords = ["godot", "multiplayer", "code-generation", "agent", "llm"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development :: Code Generators",
+]
+dependencies = [
+    "PyYAML>=6.0.2",
+    "jsonschema>=4.21",
+    "typer>=0.12",
+    "rich>=13.7",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+gamelink = "gamelink.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gamelink"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer's API requires call expressions in parameter defaults.
+"src/gamelink/cli.py" = ["B008"]

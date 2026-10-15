@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamelink.dev/schemas/server-architecture.spec.schema.json",
+  "title": "GameLink Server Architecture Spec",
+  "description": "Target server architecture: authority model, scene layout, spawns and required refactors.",
+  "type": "object",
+  "required": ["authority_model", "scene"],
+  "properties": {
+    "authority_model": {
+      "enum": ["server_authoritative", "client_authoritative", "hybrid"]
+    },
+    "tick_rate": { "type": "integer", "minimum": 1, "maximum": 120 },
+    "scene": {
+      "type": "object",
+      "properties": {
+        "root": { "type": "string", "description": "Server root scene path, res://..." },
+        "autoloads": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "spawns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node", "spawner"],
+        "properties": {
+          "node": { "type": "string" },
+          "spawner": { "type": "string" }
+        }
+      }
+    },
+    "refactors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "source", "action"],
+        "properties": {
+          "name": { "type": "string" },
+          "source": { "type": "string", "description": "res://script.gd::function" },
+          "action": {
+            "type": "string",
+            "enum": ["move_to_server", "convert_to_rpc", "keep_on_client", "review"]
+          }
+        }
+      }
+    }
+  }
+}

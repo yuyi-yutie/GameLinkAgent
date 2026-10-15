@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- GameLink Agent runtime output ---
+/specs/
+/out/
+*.spec.local.yaml
+
+# --- Godot ---
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+# Godot export artifacts
+*.exe
+*.pck
+*.zip
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

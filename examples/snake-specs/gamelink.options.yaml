@@ -1,0 +1,8 @@
+authority_model: server_authoritative
+sync_mechanism: state+event
+transport: enet
+room_mode: single
+max_players: 8
+tick_rate: 10
+persistence: none
+deploy_target: windows_server

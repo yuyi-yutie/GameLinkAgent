@@ -1,0 +1,308 @@
+extends Node2D
+
+## Server-authoritative multiplayer Snake (Phase 0 hand-made conversion).
+##
+## Server: owns the simulation (movement, collisions, food, score) and pushes
+##         state to clients with a MultiplayerSynchronizer (per snake) and RPCs.
+## Client: captures input, sends intents, and renders the replicated state.
+##
+## The whole scene graph is built in code so the same project runs unchanged as
+## a headless dedicated server (`--headless --server`).
+
+const GRID := Vector2i(20, 20)
+const CELL := 32
+const TICK_RATE := 10
+const START_LENGTH := 3
+
+var players: Node2D
+var spawner: MultiplayerSpawner
+
+var food := Vector2i(10, 10)
+var _accum := 0.0
+var _debug_net := false
+var _debug_prints := 0
+var _autopilot := false
+var _autopilot_counter := 0
+
+var status_label: Label
+
+
+func _ready() -> void:
+	players = Node2D.new()
+	players.name = "Players"
+	add_child(players)
+
+	spawner = MultiplayerSpawner.new()
+	spawner.name = "SnakeSpawner"
+	add_child(spawner)
+	spawner.spawn_path = NodePath("../Players")
+	spawner.spawn_function = _spawn_snake
+
+	_build_ui()
+
+	_debug_net = _cmdline_flag("--debug-net")
+	_autopilot = _cmdline_flag("--autopilot")
+
+	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
+	NetworkManager.session_started.connect(_on_session_started)
+
+	if _cmdline_flag("--server"):
+		NetworkManager.host()
+	elif _cmdline_value("--join") != "":
+		NetworkManager.join(_cmdline_value("--join"))
+
+
+func _cmdline_flag(name: String) -> bool:
+	return name in OS.get_cmdline_args() or name in OS.get_cmdline_user_args()
+
+
+func _cmdline_value(name: String) -> String:
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	for i in args.size():
+		if args[i] == name and i + 1 < args.size():
+			return args[i + 1]
+		if args[i].begins_with(name + "="):
+			return args[i].substr(name.length() + 1)
+	return ""
+
+
+func _process(_delta: float) -> void:
+	_update_status()
+	_run_autopilot()
+	if _debug_net and _debug_prints < 20 and Engine.get_process_frames() % 30 == 0:
+		_debug_prints += 1
+		for snake in players.get_children():
+			print("GameLink[net]: ", snake.debug_line())
+
+
+func _run_autopilot() -> void:
+	# Headless bot: sends random steering intents through the normal RPC path.
+	if not _autopilot or multiplayer.multiplayer_peer == null or multiplayer.is_server():
+		return
+	_autopilot_counter += 1
+	if _autopilot_counter % 30 != 0:
+		return
+	var dirs := [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
+	submit_direction.rpc_id(1, dirs[randi() % 4])
+
+
+func _physics_process(delta: float) -> void:
+	if not multiplayer.is_server():
+		return
+	_accum += delta
+	var step := 1.0 / float(TICK_RATE)
+	while _accum >= step:
+		_accum -= step
+		_server_tick()
+
+
+# --- session ---------------------------------------------------------------
+
+func _on_session_started(is_server: bool) -> void:
+	if is_server:
+		print("GameLink: server started (id %d)" % multiplayer.get_unique_id())
+		_spawn_snake_for(1)
+		_spawn_food()
+
+
+func _on_connected_to_server() -> void:
+	print("GameLink: connected to server as id %d" % multiplayer.get_unique_id())
+
+
+func _on_peer_connected(id: int) -> void:
+	if multiplayer.is_server():
+		_spawn_snake_for(id)
+		sync_food.rpc_id(id, food)
+
+
+func _on_peer_disconnected(id: int) -> void:
+	if not multiplayer.is_server():
+		return
+	var snake := players.get_node_or_null("Snake_%d" % id)
+	if snake:
+		snake.queue_free()
+
+
+# --- spawning --------------------------------------------------------------
+
+func _spawn_snake_for(id: int) -> void:
+	if players.has_node("Snake_%d" % id):
+		return
+	var start := Vector2i(randi_range(2, GRID.x - 3), randi_range(2, GRID.y - 3))
+	var dir: Vector2i = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN][randi() % 4]
+	spawner.spawn({"peer_id": id, "start": start, "dir": dir})
+
+
+func _spawn_snake(data: Variant) -> Node:
+	var info: Dictionary = data
+	print("GameLink: spawning snake for peer %d" % int(info["peer_id"]))
+	var snake := Snake.new()
+	snake.name = "Snake_%d" % int(info["peer_id"])
+	snake.peer_id = int(info["peer_id"])
+	snake.setup(info["start"], info["dir"])
+
+	var sync := MultiplayerSynchronizer.new()
+	sync.name = "Sync"
+	sync.root_path = NodePath("..")
+	var config := SceneReplicationConfig.new()
+	config.add_property(".:segments")
+	config.add_property(".:score")
+	sync.replication_config = config
+	snake.add_child(sync)
+	return snake
+
+
+# --- server simulation -----------------------------------------------------
+
+func _server_tick() -> void:
+	for snake in players.get_children():
+		if not snake.alive:
+			continue
+		var head: Vector2i = snake.next_head()
+		if head.x < 0 or head.y < 0 or head.x >= GRID.x or head.y >= GRID.y:
+			_respawn(snake)
+			continue
+		if _occupied(head, snake):
+			_respawn(snake)
+			continue
+		var ate := head == food
+		snake.commit(ate)
+		if ate:
+			snake.score += 1
+			_spawn_food()
+
+
+func _occupied(cell: Vector2i, moving: Node) -> bool:
+	for snake in players.get_children():
+		var cells: Array = snake.segments
+		if snake == moving:
+			cells = snake.body_without_head()  # own tail vacates this tick
+		if cell in cells:
+			return true
+	return false
+
+
+func _respawn(snake: Node) -> void:
+	# Phase 0 demo: respawn instantly on death (no death screen / timer yet).
+	var start := Vector2i(randi_range(2, GRID.x - 3), randi_range(2, GRID.y - 3))
+	var dir: Vector2i = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN][randi() % 4]
+	snake.setup(start, dir)
+
+
+func _spawn_food() -> void:
+	var taken := {}
+	for snake in players.get_children():
+		for cell in snake.segments:
+			taken[cell] = true
+	var free: Array[Vector2i] = []
+	for x in GRID.x:
+		for y in GRID.y:
+			var cell := Vector2i(x, y)
+			if not taken.has(cell):
+				free.append(cell)
+	if free.is_empty():
+		return
+	food = free[randi() % free.size()]
+	queue_redraw()
+	sync_food.rpc(food)
+
+
+# --- RPCs ------------------------------------------------------------------
+
+@rpc("any_peer", "reliable")
+func submit_direction(dir: Vector2i) -> void:
+	if not multiplayer.is_server():
+		return
+	var snake := players.get_node_or_null("Snake_%d" % multiplayer.get_remote_sender_id())
+	if snake:
+		snake.set_intent(dir)
+
+
+@rpc("authority", "call_local", "reliable")
+func sync_food(pos: Vector2i) -> void:
+	food = pos
+	queue_redraw()
+
+
+# --- input -----------------------------------------------------------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	var dir := Vector2i.ZERO
+	if event.is_action_pressed("ui_up"):
+		dir = Vector2i.UP
+	elif event.is_action_pressed("ui_down"):
+		dir = Vector2i.DOWN
+	elif event.is_action_pressed("ui_left"):
+		dir = Vector2i.LEFT
+	elif event.is_action_pressed("ui_right"):
+		dir = Vector2i.RIGHT
+	else:
+		return
+
+	if multiplayer.multiplayer_peer == null:
+		return
+	if multiplayer.is_server():
+		var snake := _local_snake()
+		if snake:
+			snake.set_intent(dir)
+	else:
+		submit_direction.rpc_id(1, dir)
+
+
+func _local_snake() -> Node:
+	return players.get_node_or_null("Snake_%d" % multiplayer.get_unique_id())
+
+
+# --- presentation ----------------------------------------------------------
+
+func _draw() -> void:
+	draw_rect(Rect2(Vector2.ZERO, Vector2(GRID.x * CELL, GRID.y * CELL)), Color(0.1, 0.1, 0.12))
+	draw_rect(Rect2(Vector2(food) * CELL, Vector2(CELL, CELL)), Color(0.9, 0.3, 0.3))
+
+
+func _build_ui() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "UI"
+	add_child(layer)
+
+	var box := VBoxContainer.new()
+	box.position = Vector2(8, 8)
+	layer.add_child(box)
+
+	status_label = Label.new()
+	box.add_child(status_label)
+
+	var row := HBoxContainer.new()
+	box.add_child(row)
+
+	var host_button := Button.new()
+	host_button.text = "Host"
+	row.add_child(host_button)
+
+	var address := LineEdit.new()
+	address.text = "127.0.0.1"
+	address.custom_minimum_size = Vector2(150, 0)
+	row.add_child(address)
+
+	var join_button := Button.new()
+	join_button.text = "Join"
+	row.add_child(join_button)
+
+	host_button.pressed.connect(func() -> void: NetworkManager.host())
+	join_button.pressed.connect(func() -> void: NetworkManager.join(address.text))
+
+
+func _update_status() -> void:
+	if status_label == null:
+		return
+	if multiplayer.multiplayer_peer == null:
+		status_label.text = "Not connected — Host or Join"
+		return
+	var role := "server" if multiplayer.is_server() else "client"
+	var snake := _local_snake()
+	var score: int = snake.score if snake else 0
+	status_label.text = "%s (id %d) — peers: %d — your score: %d" % [
+		role, multiplayer.get_unique_id(), multiplayer.get_peers().size(), score
+	]

@@ -1,0 +1,26 @@
+; Godot 4 project — GameLink Agent Phase 0 OUTPUT fixture.
+; Hand-made conversion of snake-single into a server-authoritative multiplayer game.
+; Same project runs as a headless server and as rendering clients.
+
+config_version=5
+
+[application]
+
+config/name="Snake MP"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[autoload]
+
+NetworkManager="*res://scripts/network_manager.gd"
+
+[display]
+
+window/size/viewport_width=640
+window/size/viewport_height=640
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.05, 0.05, 0.07, 1)

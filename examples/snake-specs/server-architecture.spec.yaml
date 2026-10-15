@@ -1,0 +1,17 @@
+authority_model: server_authoritative
+tick_rate: 10
+scene:
+  root: res://scenes/main.tscn
+  autoloads: [NetworkManager]
+spawns:
+  - { node: Snake, spawner: /root/Main/SnakeSpawner }
+refactors:
+  - name: MoveSimulationToServer
+    source: res://scripts/main.gd::_process
+    action: move_to_server
+  - name: InputToIntent
+    source: res://scripts/main.gd::_unhandled_input
+    action: convert_to_rpc
+  - name: ScoreToServer
+    source: res://scripts/main.gd::_step
+    action: move_to_server

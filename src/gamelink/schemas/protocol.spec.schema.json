@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gamelink.dev/schemas/protocol.spec.schema.json",
+  "title": "GameLink Protocol Spec",
+  "description": "Network protocol extracted from a game project: messages and replicated state.",
+  "type": "object",
+  "required": ["game", "messages"],
+  "properties": {
+    "game": { "type": "string", "description": "Project/game name." },
+    "target_engine": { "type": "string", "default": "godot-4.x" },
+    "transport": {
+      "type": "string",
+      "description": "Godot multiplayer peer class, e.g. ENetMultiplayerPeer."
+    },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "direction"],
+        "properties": {
+          "id": { "type": "string" },
+          "direction": { "enum": ["C2S", "S2C"] },
+          "rpc_mode": { "enum": ["authority", "any_peer"] },
+          "transfer": { "enum": ["reliable", "unreliable", "unreliable_ordered"] },
+          "params": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "type"],
+              "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" }
+              }
+            }
+          },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "state": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node", "replicated"],
+        "properties": {
+          "node": { "type": "string" },
+          "authority": { "enum": ["server", "client"] },
+          "replicated": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "type"],
+              "properties": {
+                "name": { "type": "string" },
+                "type": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+game: snake
+target_engine: godot-4.x
+transport: ENetMultiplayerPeer
+messages:
+  - id: submit_direction
+    direction: C2S
+    rpc_mode: any_peer
+    transfer: reliable
+    params:
+      - { name: dir, type: Vector2i }
+    description: Client sends a steering intent; the server validates and applies it.
+  - id: sync_food
+    direction: S2C
+    rpc_mode: authority
+    transfer: reliable
+    params:
+      - { name: pos, type: Vector2i }
+    description: Server broadcasts the authoritative food position.
+state:
+  - node: Snake
+    authority: server
+    replicated:
+      - { name: segments, type: "Array[Vector2i]" }
+      - { name: score, type: int }
