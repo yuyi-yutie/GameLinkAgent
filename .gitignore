@@ -17,6 +17,9 @@ venv/
 /out/
 *.spec.local.yaml
 
+# --- Web UI runtime (job logs / history) ---
+.gamelink/
+
 # --- Godot ---
 .godot/
 .import/

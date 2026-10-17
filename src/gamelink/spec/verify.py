@@ -13,11 +13,14 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from gamelink.errors import JobCancelled
 from gamelink.resources import template_path
+from gamelink.util import run_capture
 
 _OUTPUT_MARKER = "GAMELINK_FACTS_JSON"
 _STAGED_SCRIPT = "_gamelink_introspect.gd"
@@ -33,6 +36,7 @@ def collect_engine_facts(
     project_dir: str | Path,
     godot_bin: str | None,
     timeout: int = 120,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any] | None:
     """Introspect a Godot project via the engine. Returns ``None`` if unavailable."""
     if not godot_bin or not Path(godot_bin).exists():
@@ -44,13 +48,13 @@ def collect_engine_facts(
     staged = root / _STAGED_SCRIPT
     try:
         shutil.copyfile(script, staged)
-        proc = subprocess.run(
+        proc = run_capture(
             [godot_bin, "--headless", "--path", str(root), "--script", f"res://{_STAGED_SCRIPT}"],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
+            timeout,
+            cancel_event,
         )
+    except JobCancelled:
+        raise
     except (OSError, subprocess.SubprocessError):
         return None
     finally:
@@ -69,9 +73,10 @@ def verify_consistency(
     protocol: dict[str, Any],
     architecture: dict[str, Any],
     godot_bin: str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> list[Issue]:
     """Compare a spec against engine facts and report mismatches."""
-    facts = collect_engine_facts(project_dir, godot_bin)
+    facts = collect_engine_facts(project_dir, godot_bin, cancel_event=cancel_event)
     if facts is None:
         return [
             Issue(

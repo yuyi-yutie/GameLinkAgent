@@ -14,15 +14,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from gamelink.config import Settings
-from gamelink.errors import DeployError
+from gamelink.errors import DeployError, JobCancelled
 from gamelink.generate.godot import DEFAULT_PORT, SERVER_PRESET
 from gamelink.options import DesignerOptions
 from gamelink.resources import render_template
-from gamelink.util import slugify
+from gamelink.util import run_capture, slugify
 
 GUIDE_NAME = "使用说明.md"
 
@@ -113,22 +114,25 @@ def _context(plan: DeployPlan) -> dict[str, object]:
     }
 
 
-def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
+def _run(
+    cmd: list[str],
+    timeout: int,
+    cancel_event: threading.Event | None = None,
+) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
+        return run_capture(cmd, timeout, cancel_event)
+    except JobCancelled:
+        raise
     except (OSError, subprocess.SubprocessError) as exc:
         raise DeployError(f"执行命令失败：{exc}") from exc
 
 
-def export_server(plan: DeployPlan, godot_bin: str | None, timeout: int = 900) -> Path:
+def export_server(
+    plan: DeployPlan,
+    godot_bin: str | None,
+    timeout: int = 900,
+    cancel_event: threading.Event | None = None,
+) -> Path:
     """Export the headless dedicated server and return the executable path."""
     if not godot_bin or not Path(godot_bin).exists():
         raise DeployError("未配置 Godot 引擎（GAMELINK_GODOT_BIN），无法导出服务端")
@@ -142,7 +146,7 @@ def export_server(plan: DeployPlan, godot_bin: str | None, timeout: int = 900) -
     exe_path = dist_dir / plan.exe_name
 
     # Godot needs absolute paths here, and a prior import pass on a fresh checkout.
-    _run([godot_bin, "--headless", "--path", str(project_dir), "--import"], timeout)
+    _run([godot_bin, "--headless", "--path", str(project_dir), "--import"], timeout, cancel_event)
     proc = _run(
         [
             godot_bin,
@@ -154,6 +158,7 @@ def export_server(plan: DeployPlan, godot_bin: str | None, timeout: int = 900) -
             str(exe_path),
         ],
         timeout,
+        cancel_event,
     )
     if not exe_path.is_file():
         detail = (proc.stderr or proc.stdout or "").strip()[-800:]
@@ -161,9 +166,14 @@ def export_server(plan: DeployPlan, godot_bin: str | None, timeout: int = 900) -
     return exe_path
 
 
-def package(plan: DeployPlan, godot_bin: str | None, timeout: int = 900) -> DeployResult:
+def package(
+    plan: DeployPlan,
+    godot_bin: str | None,
+    timeout: int = 900,
+    cancel_event: threading.Event | None = None,
+) -> DeployResult:
     """Export the server, then write the deployment guide and helper scripts."""
-    exe = export_server(plan, godot_bin, timeout)
+    exe = export_server(plan, godot_bin, timeout, cancel_event)
     context = _context(plan)
     result = DeployResult(dist_dir=plan.dist_dir, exe_path=exe, files=[exe])
 

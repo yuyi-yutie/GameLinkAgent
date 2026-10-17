@@ -28,6 +28,11 @@ def templates_root() -> Path:
     return package_root() / "templates"
 
 
+def static_root() -> Path:
+    """Directory holding the built web UI (absent until the frontend is built)."""
+    return package_root() / "web" / "static"
+
+
 def template_path(*parts: str) -> Path:
     """Path to a template file, e.g. ``template_path("godot", "NetworkManager.gd.tmpl")``."""
     return templates_root().joinpath(*parts)

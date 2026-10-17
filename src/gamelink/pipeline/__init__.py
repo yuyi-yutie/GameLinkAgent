@@ -1,0 +1,65 @@
+"""Shared pipeline layer.
+
+One implementation of the ingest -> analyze -> spec -> generate -> deploy flow,
+used by both the CLI and the web UI. It knows nothing about HTTP or terminals.
+"""
+
+from gamelink.pipeline.events import (
+    ARTIFACT,
+    CHUNK,
+    ISSUE,
+    JOB_CANCELLED,
+    JOB_FAILED,
+    JOB_FINISHED,
+    LOG,
+    PROGRESS,
+    STAGE_FINISHED,
+    STAGE_STARTED,
+    TERMINAL_TYPES,
+    TODO,
+    Emitter,
+    Event,
+    JobCancelled,
+    Sink,
+    Stage,
+)
+from gamelink.pipeline.service import (
+    OPTIONS_FILE,
+    AnalyzeOutcome,
+    DeployOutcome,
+    analyze_project,
+    deploy_server,
+    generate_from_specs,
+    inspect_project,
+    verify_project,
+    write_report,
+)
+
+__all__ = [
+    "ARTIFACT",
+    "CHUNK",
+    "ISSUE",
+    "JOB_CANCELLED",
+    "JOB_FAILED",
+    "JOB_FINISHED",
+    "LOG",
+    "OPTIONS_FILE",
+    "PROGRESS",
+    "STAGE_FINISHED",
+    "STAGE_STARTED",
+    "TERMINAL_TYPES",
+    "TODO",
+    "AnalyzeOutcome",
+    "DeployOutcome",
+    "Emitter",
+    "Event",
+    "JobCancelled",
+    "Sink",
+    "Stage",
+    "analyze_project",
+    "deploy_server",
+    "generate_from_specs",
+    "inspect_project",
+    "verify_project",
+    "write_report",
+]

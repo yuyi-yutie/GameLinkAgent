@@ -7,26 +7,34 @@ import shlex
 import sys
 import time
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
+from rich.status import Status
 from rich.table import Table
+from rich.text import Text
 from typer.main import get_command
 
 from gamelink import __version__, ui
-from gamelink.analyze import Analyzer
 from gamelink.analyze.llm import REASONING
 from gamelink.config import Settings, user_config_path
-from gamelink.deploy import build_deploy_plan, package
 from gamelink.errors import GameLinkError
-from gamelink.generate import generate_server
-from gamelink.ingest import GodotProject
 from gamelink.options import OPTION_CHOICES, DesignerOptions
-from gamelink.spec import load_yaml, read_specs, verify_consistency, write_specs
-from gamelink.spec.io import dump_yaml
-from gamelink.util import slugify
+from gamelink.pipeline import (
+    CHUNK,
+    ISSUE,
+    LOG,
+    PROGRESS,
+    Emitter,
+    Event,
+    analyze_project,
+    deploy_server,
+    generate_from_specs,
+    inspect_project,
+    verify_project,
+)
 
 
 def _configure_output() -> None:
@@ -51,8 +59,6 @@ app = typer.Typer(
 )
 console = Console()
 
-OPTIONS_FILE = "gamelink.options.yaml"
-
 
 def _fail(exc: GameLinkError) -> NoReturn:
     console.print(f"[red]error:[/red] {exc}")
@@ -64,12 +70,91 @@ def _split_args(line: str) -> list[str]:
     return [t[1:-1] if len(t) >= 2 and t[0] == t[-1] == '"' else t for t in tokens]
 
 
-def _write_report(out_dir: Path, project_name: str, report: str) -> Path:
-    """Write the analysis report as Markdown and return its path."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{slugify(project_name)}-report.md"
-    path.write_text((report or "(无报告)").rstrip() + "\n", encoding="utf-8")
-    return path
+class _ConsoleRenderer:
+    """Renders pipeline events with Rich.
+
+    This holds the progress UI the CLI used to keep inline: a live spinner while a
+    long stage runs, the raw model stream under ``--stream``, and log/issue lines
+    as they arrive. The pipeline itself stays presentation-free.
+    """
+
+    def __init__(self, console: Console, *, raw_stream: bool = False) -> None:
+        self.console = console
+        self.raw_stream = raw_stream
+        self.status: Status | None = None
+        self.message: str | None = None
+        self.thought = 0
+        self.received = 0
+        self.announced = False
+
+    def __call__(self, event: Event) -> None:
+        if event.type == PROGRESS:
+            self._progress(str(event.data.get("message", "")))
+        elif event.type == CHUNK:
+            self._chunk(str(event.data.get("kind", "")), str(event.data.get("text", "")))
+        elif event.type == LOG:
+            self._log(event.data)
+        elif event.type == ISSUE:
+            self._issue(event.data)
+
+    def close(self) -> None:
+        if self.status is not None:
+            self.status.stop()
+            self.status = None
+        if self.raw_stream:
+            self.console.print()
+
+    def _progress(self, message: str) -> None:
+        if self.raw_stream or not message:
+            return
+        if self.console.is_terminal:
+            if self.status is None:
+                self.status = self.console.status(message, spinner="dots")
+                self.status.start()
+            elif message != self.message:
+                self.status.update(message)
+        elif message != self.message:
+            self.console.print(message)
+        self.message = message
+
+    def _chunk(self, kind: str, text: str) -> None:
+        if kind == REASONING:
+            self.thought += len(text)
+            if self.raw_stream:
+                # Straight to stdout so the model's own newlines survive and the
+                # terminal wraps at its own width (rich would collapse them).
+                sys.stdout.write(text)
+                sys.stdout.flush()
+            elif self.status is not None:
+                self.status.update(f"正在调用 LLM 分析工程… 模型已推理 {self.thought:,} 字符")
+            return
+        self.received += len(text)
+        if self.raw_stream:
+            if not self.announced:
+                self.announced = True
+                sys.stdout.write("\n\n[ 推理结束，正在生成结构化结果（内容见下方报告）… ]\n")
+                sys.stdout.flush()
+        elif self.status is not None:
+            self.status.update(f"正在生成结构化结果… 已接收 {self.received:,} 字符")
+
+    def _log(self, data: dict[str, Any]) -> None:
+        message = str(data.get("message", ""))
+        level = str(data.get("level", "info"))
+        if level == "title":
+            self.console.print(f"[bold]{message}[/bold]")
+        elif level in ("warn", "error"):
+            color = "yellow" if level == "warn" else "red"
+            self.console.print(f"[{color}]{message}[/{color}]")
+        else:
+            self.console.print(message, markup=False, highlight=False)
+
+    def _issue(self, data: dict[str, Any]) -> None:
+        severity = str(data.get("severity", "info"))
+        color = {"error": "red", "warning": "yellow", "info": "green"}.get(severity, "white")
+        line = Text("  ")
+        line.append(severity, style=color)
+        line.append(f" {data.get('message', '')}")
+        self.console.print(line)
 
 
 def _welcome_shell() -> None:
@@ -183,6 +268,31 @@ def shell() -> None:
 
 
 @app.command()
+def web(
+    workspace: Path = typer.Option(Path("."), "--workspace", help="工作区目录（默认当前目录）"),
+    port: int = typer.Option(8765, "--port", help="监听端口"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="不自动打开浏览器"),
+) -> None:
+    """启动本地 Web 界面（浏览器打开 http://127.0.0.1:<端口>）。"""
+    try:
+        from gamelink.web import serve
+    except ImportError as exc:
+        console.print(
+            "[yellow]Web 界面需要额外的依赖，请先安装：[/yellow]\n"
+            '  pip install -e ".[web]"'
+        )
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[bold]GameLink Agent[/bold] Web 界面 → http://127.0.0.1:{port}/")
+    console.print(f"[dim]工作区：{workspace.resolve()}[/dim]")
+    console.print("[dim]按 Ctrl+C 停止。[/dim]")
+    try:
+        serve(workspace, port=port, open_browser=not no_browser)
+    except KeyboardInterrupt:
+        console.print("\n[dim]已停止。[/dim]")
+
+
+@app.command()
 def doctor() -> None:
     """检查环境（Python / Godot / LLM / 部署 / 用户配置）。"""
     settings = Settings.load()
@@ -216,7 +326,7 @@ def doctor() -> None:
 def inspect(project: Path = typer.Argument(..., exists=True, help="Godot project directory")) -> None:
     """解析 Godot 工程结构并打印摘要。"""
     try:
-        proj = GodotProject.discover(project)
+        proj = inspect_project(project)
     except GameLinkError as exc:
         _fail(exc)
     console.print(f"[bold]{proj.name}[/bold]  ({proj.root})")
@@ -250,11 +360,6 @@ def analyze(
     ),
 ) -> None:
     """LLM 分析工程，输出中文 Markdown 报告（加 --specs 可导出规格）。"""
-    try:
-        proj = GodotProject.discover(project)
-    except GameLinkError as exc:
-        _fail(exc)
-
     options = DesignerOptions(
         authority_model=authority_model,
         sync_mechanism=sync_mechanism,
@@ -269,70 +374,28 @@ def analyze(
         options = _interactive_options(options)
 
     settings = Settings.load()
-
-    thought = 0
-    received = 0
-    json_announced = False
+    renderer = _ConsoleRenderer(console, raw_stream=raw_stream)
     started = time.monotonic()
-
-    status = None
-    if not raw_stream:
-        if console.is_terminal:
-            status = console.status("正在调用 LLM 分析工程…", spinner="dots")
-            status.start()
-        else:
-            console.print("正在调用 LLM 分析工程…")
-
-    def on_chunk(kind: str, text: str) -> None:
-        nonlocal thought, received, json_announced
-        if kind == REASONING:
-            thought += len(text)
-            if raw_stream:
-                # Write straight to stdout so the model's own newlines survive and
-                # the terminal wraps at its own width (rich would collapse them).
-                sys.stdout.write(text)
-                sys.stdout.flush()
-            elif status is not None:
-                status.update(f"正在调用 LLM 分析工程… 模型已推理 {thought:,} 字符")
-            return
-        received += len(text)
-        if raw_stream:
-            if not json_announced:
-                json_announced = True
-                sys.stdout.write("\n\n[ 推理结束，正在生成结构化结果（内容见下方报告）… ]\n")
-                sys.stdout.flush()
-        elif status is not None:
-            status.update(f"正在生成结构化结果… 已接收 {received:,} 字符")
-
-    result = None
-    report_path: Path | None = None
-    spec_paths: list[Path] = []
-    error: GameLinkError | None = None
     try:
-        result = Analyzer(settings).analyze(proj, options, on_chunk=on_chunk)
-        report_path = _write_report(out, proj.name, result.report)
-        if emit_specs:
-            protocol_path, arch_path = write_specs(
-                result.protocol_spec, result.architecture_spec, out
-            )
-            dump_yaml(options.to_dict(), out / OPTIONS_FILE)
-            spec_paths = [protocol_path, arch_path]
+        outcome = analyze_project(
+            inspect_project(project),
+            options,
+            settings,
+            Emitter(renderer),
+            out_dir=out,
+            emit_specs=emit_specs,
+        )
     except GameLinkError as exc:
-        error = exc
+        _fail(exc)
     finally:
-        if status is not None:
-            status.stop()
-        if raw_stream:
-            console.print()
-    if error is not None:
-        _fail(error)
+        renderer.close()
 
     console.print(f"[dim]分析完成，用时 {time.monotonic() - started:.1f}s[/dim]")
     console.rule("[bold]分析报告")
-    console.print(result.report or "(无报告)")
+    console.print(outcome.report or "(无报告)")
     console.rule("输出文件")
-    console.print(f"  [green]{report_path}[/green]")
-    for path in spec_paths:
+    console.print(f"  [green]{outcome.report_path}[/green]")
+    for path in outcome.spec_paths:
         console.print(f"  {path}")
     if not emit_specs:
         console.print("[dim]（如需生成服务端：加 --specs 一并导出规格，再执行 `gla generate`）[/dim]")
@@ -345,19 +408,15 @@ def generate(
     out: Path = typer.Option(Path("out/server"), "--out", help="Output server project directory"),
 ) -> None:
     """按规格生成可运行的 Godot 服务端工程。"""
+    renderer = _ConsoleRenderer(console)
     try:
-        proj = GodotProject.discover(project)
-        protocol, architecture = read_specs(specs)
+        result = generate_from_specs(
+            inspect_project(project), specs, out, Emitter(renderer)
+        )
     except GameLinkError as exc:
         _fail(exc)
-
-    options_path = specs / OPTIONS_FILE
-    options = DesignerOptions.from_dict(load_yaml(options_path)) if options_path.exists() else DesignerOptions()
-
-    try:
-        result = generate_server(proj, options, protocol, architecture, out)
-    except GameLinkError as exc:
-        _fail(exc)
+    finally:
+        renderer.close()
 
     console.print(f"[green]generated[/green] {len(result.files)} files into {result.out_dir}")
     for path in result.files:
@@ -374,16 +433,13 @@ def verify(
     specs: Path = typer.Option(Path("specs"), "--specs", help="Directory containing the specs"),
 ) -> None:
     """用 Godot 内省校验规格与实现是否一致。"""
+    renderer = _ConsoleRenderer(console)
     try:
-        protocol, architecture = read_specs(specs)
+        verify_project(project, specs, Settings.load(), Emitter(renderer))
     except GameLinkError as exc:
         _fail(exc)
-
-    settings = Settings.load()
-    issues = verify_consistency(project, protocol, architecture, settings.godot_bin)
-    for issue in issues:
-        color = {"error": "red", "warning": "yellow", "info": "green"}[issue.severity]
-        console.print(f"  [{color}]{issue.severity}[/{color}] {issue.message}")
+    finally:
+        renderer.close()
 
 
 @app.command()
@@ -392,16 +448,15 @@ def deploy(
     out: Path | None = typer.Option(None, "--out", help="导出目录（默认 <工程>/dist）"),
 ) -> None:
     """导出 headless 服务端，并生成部署说明（一键部署包）。"""
-    settings = Settings.load()
-    plan = build_deploy_plan(server_dir, settings, DesignerOptions(), out_dir=out)
-    console.print("[bold]一键部署：导出 headless 服务端[/bold]")
-    console.print(plan.describe())
-    console.print()
+    renderer = _ConsoleRenderer(console)
     try:
-        with console.status("正在导出 Godot 服务端（首次导出较慢）…", spinner="dots"):
-            result = package(plan, settings.godot_bin)
+        outcome = deploy_server(server_dir, Settings.load(), Emitter(renderer), out_dir=out)
     except GameLinkError as exc:
         _fail(exc)
+    finally:
+        renderer.close()
+
+    result = outcome.result
     console.print(f"[green]完成[/green]：{len(result.files)} 个文件 -> {result.dist_dir}")
     for path in result.files:
         console.print(f"  {path}")

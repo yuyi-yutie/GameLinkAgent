@@ -26,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.5"]
+web = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [project.scripts]
 gamelink = "gamelink.cli:app"

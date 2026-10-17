@@ -27,3 +27,7 @@ class GenerateError(GameLinkError):
 
 class DeployError(GameLinkError):
     """Deployment to the target environment failed."""
+
+
+class JobCancelled(GameLinkError):
+    """A long-running operation was cancelled by its caller."""

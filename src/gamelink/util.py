@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import threading
+import time
 from collections.abc import Iterator
 from typing import Any
 
-from gamelink.errors import AnalysisError
+from gamelink.errors import AnalysisError, JobCancelled
 
 _TRAILING_COMMA = re.compile(r",\s*([}\]])")
 
@@ -82,3 +85,41 @@ def extract_json(text: str) -> dict[str, Any]:
         if "report" in obj or "protocol_spec" in obj:
             return obj
     return parsed[0]
+
+
+def run_capture(
+    cmd: list[str],
+    timeout: float,
+    cancel_event: threading.Event | None = None,
+    poll: float = 0.5,
+) -> subprocess.CompletedProcess:
+    """Run ``cmd`` and capture its output, killing it early when cancelled.
+
+    Same contract as ``subprocess.run(..., capture_output=True, text=True)`` plus
+    an optional cancellation token — needed because a Godot export can take
+    minutes, and a cancelled job must not leave the process running.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            try:
+                stdout, stderr = proc.communicate(timeout=poll)
+            except subprocess.TimeoutExpired:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise JobCancelled("已取消") from None
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(cmd, timeout) from None
+                continue
+            return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()

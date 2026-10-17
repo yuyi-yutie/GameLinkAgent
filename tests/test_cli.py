@@ -56,9 +56,9 @@ def test_generate_from_example_specs(tmp_path):
 
 
 def test_write_report_uses_project_slug(tmp_path):
-    from gamelink.cli import _write_report
+    from gamelink.pipeline import write_report
 
-    path = _write_report(tmp_path, "Snake Single", "# 分析\n\n正文")
+    path = write_report(tmp_path, "Snake Single", "# 分析\n\n正文")
     assert path.name == "snake-single-report.md"
     assert path.read_text(encoding="utf-8").startswith("# 分析")
 

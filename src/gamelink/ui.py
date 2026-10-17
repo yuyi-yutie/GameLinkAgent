@@ -127,6 +127,18 @@ COMMANDS: tuple[CommandDoc, ...] = (
         examples=("gla doctor",),
     ),
     CommandDoc(
+        name="web",
+        group="配置与工具",
+        summary="启动本地 Web 界面（浏览器操作完整流水线）",
+        usage="gla web [--workspace <目录>] [--port <端口>] [--no-browser]",
+        notes=(
+            "在 127.0.0.1 上起一个本地服务，用浏览器完成导入 / 分析 / 规格审阅 / 生成 / 导出。",
+            "任务在后台线程运行：页面可实时看到进度与流式推理，也可以中途取消。",
+            "需要额外依赖：pip install -e \".[web]\"。",
+        ),
+        examples=("gla web", "gla web --port 9000"),
+    ),
+    CommandDoc(
         name="shell",
         group="配置与工具",
         summary="进入交互式欢迎界面（等价于不带参数运行 gla）",
