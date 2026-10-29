@@ -193,6 +193,43 @@ pre {
   box-shadow: 0 6px 16px rgba(13, 39, 48, 0.08);
 }
 
+.chip-button {
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.chip-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chip-button:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.chip-button:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.chip-action {
+  color: var(--accent);
+  font-weight: 600;
+  padding-left: 6px;
+  margin-left: 1px;
+  border-left: 1px solid var(--border);
+}
+
+.chip-button:hover .chip-action {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .chip-dot {
   width: 7px;
   height: 7px;
@@ -793,6 +830,84 @@ pre {
   box-shadow: 0 0 0 3px var(--ring);
 }
 
+.field-highlight > span {
+  color: var(--accent);
+}
+
+.field-highlight input {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+  animation: field-flash 1.4s var(--ease) both;
+}
+
+.field-with-action {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.field-with-action input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-with-action .btn {
+  flex: none;
+}
+
+/* ---------- Godot executable picker ---------- */
+
+.godot-picker {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  animation: rise-in 0.3s var(--ease) both;
+}
+
+.godot-picker .browser-list {
+  background: #fff;
+  max-height: 220px;
+}
+
+.file-entry .file-icon {
+  flex: none;
+  color: var(--amber);
+  margin-right: 8px;
+  font-size: 10px;
+}
+
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-check {
+  flex: none;
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.file-entry-selected,
+.file-entry-selected:hover {
+  background: linear-gradient(90deg, var(--accent-soft), #ffffff 92%);
+  color: var(--accent-ink);
+}
+
+@keyframes field-flash {
+  0% {
+    box-shadow: 0 0 0 8px rgba(15, 118, 110, 0.24);
+  }
+  100% {
+    box-shadow: 0 0 0 3px var(--ring);
+  }
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1232,6 +1347,8 @@ pre {
 
 .modal-card {
   width: min(560px, 100%);
+  max-height: min(88vh, 760px);
+  overflow-y: auto;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -1482,6 +1599,10 @@ pre {
   .btn {
     min-height: 44px;
     padding: 10px 16px;
+  }
+
+  .chip-button {
+    min-height: 44px;
   }
 
   .field input,

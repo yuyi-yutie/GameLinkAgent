@@ -5,14 +5,31 @@ interface ChipProps {
   label: string;
   detail: string;
   title?: string;
+  action?: string;
+  onClick?: () => void;
 }
 
-function Chip({ ok, label, detail, title }: ChipProps) {
-  return (
-    <span className={`chip ${ok ? "chip-ok" : "chip-warn"}`} title={title}>
+function Chip({ ok, label, detail, title, action, onClick }: ChipProps) {
+  const className = `chip ${ok ? "chip-ok" : "chip-warn"}${onClick ? " chip-button" : ""}`;
+  const content = (
+    <>
       <span className="chip-dot" />
       {label}
       <span className="muted">{detail}</span>
+      {action && <span className="chip-action">{action}</span>}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} title={title} onClick={onClick}>
+        {content}
+      </button>
+    );
+  }
+  return (
+    <span className={className} title={title}>
+      {content}
     </span>
   );
 }
@@ -24,7 +41,7 @@ function shorten(path: string): string {
 
 interface Props {
   health: Health | null;
-  onOpenConfig: () => void;
+  onOpenConfig: (section?: "godot") => void;
 }
 
 export function StatusBar({ health, onOpenConfig }: Props) {
@@ -48,7 +65,9 @@ export function StatusBar({ health, onOpenConfig }: Props) {
               ok={health.godot.exists}
               label="Godot"
               detail={health.godot.exists ? "就绪" : "未配置"}
-              title={health.godot.bin ?? "GAMELINK_GODOT_BIN 未设置"}
+              title="点击配置 Godot 引擎路径"
+              action="设置"
+              onClick={() => onOpenConfig("godot")}
             />
             <Chip ok={Boolean(health.deploy.host)} label="部署" detail={health.deploy.host ?? "未配置"} />
             <span className="chip chip-plain" title={health.workspace}>
@@ -60,7 +79,7 @@ export function StatusBar({ health, onOpenConfig }: Props) {
         )}
       </div>
 
-      <button type="button" className="btn btn-accent" onClick={onOpenConfig}>
+      <button type="button" className="btn btn-accent" onClick={() => onOpenConfig()}>
         配置
       </button>
     </header>

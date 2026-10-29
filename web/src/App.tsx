@@ -12,6 +12,7 @@ const PATH_PARAM = "path";
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [configSection, setConfigSection] = useState<"godot" | null>(null);
   const [projectPath, setProjectPath] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get(PATH_PARAM),
   );
@@ -21,6 +22,11 @@ export default function App() {
       .health()
       .then(setHealth)
       .catch(() => setHealth(null));
+  }, []);
+
+  const openConfig = useCallback((section?: "godot") => {
+    setConfigSection(section ?? null);
+    setConfigOpen(true);
   }, []);
 
   useEffect(() => {
@@ -37,7 +43,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <StatusBar health={health} onOpenConfig={() => setConfigOpen(true)} />
+      <StatusBar health={health} onOpenConfig={openConfig} />
       {projectPath ? (
         <Project path={projectPath} onLeave={() => setProjectPath(null)} />
       ) : (
@@ -45,8 +51,10 @@ export default function App() {
       )}
       {configOpen && (
         <ConfigPanel
+          focus={configSection}
           onClose={() => {
             setConfigOpen(false);
+            setConfigSection(null);
             refreshHealth();
           }}
         />

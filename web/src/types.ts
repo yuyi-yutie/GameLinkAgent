@@ -80,6 +80,10 @@ export interface DirListing {
   roots: string[];
 }
 
+export interface FileListing extends DirListing {
+  files: DirEntry[];
+}
+
 export interface ProjectInfo {
   root: string;
   name: string;

@@ -2,6 +2,7 @@ import type {
   AppConfig,
   ArtifactText,
   DirListing,
+  FileListing,
   Health,
   Job,
   OptionsResponse,
@@ -46,6 +47,8 @@ export const api = {
 
   dirs: (path?: string) =>
     request<DirListing>(`/api/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  entries: (path?: string) =>
+    request<FileListing>(`/api/fs/entries${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   project: (path: string) => request<ProjectInfo>(`/api/projects?path=${encodeURIComponent(path)}`),
 
   artifact: (path: string) =>

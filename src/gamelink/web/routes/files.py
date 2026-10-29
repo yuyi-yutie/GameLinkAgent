@@ -35,28 +35,26 @@ def _workspace_file(request: Request, raw: str) -> Path:
     return target
 
 
-@router.get("/fs/dirs")
-def list_dirs(request: Request, path: str | None = None) -> dict[str, Any]:
-    """Browse directories so the user can point at a Godot project anywhere on disk."""
+def _current_dir(request: Request, path: str | None) -> Path:
     workspace = request.app.state.workspace
     current = Path(path).expanduser() if path else workspace
     if not current.is_absolute():
         current = workspace / current
-    current = current.resolve()
+    return current.resolve()
+
+
+def _browse(current: Path, *, include_files: bool) -> dict[str, Any]:
     if not current.is_dir():
         raise HTTPException(status_code=404, detail=f"不是目录：{current}")
     try:
-        children = sorted(
-            (
-                item
-                for item in current.iterdir()
-                if item.is_dir() and not item.name.startswith(".")
-            ),
-            key=lambda item: item.name.lower(),
-        )
+        items = list(current.iterdir())
     except OSError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    return {
+    children = sorted(
+        (item for item in items if item.is_dir() and not item.name.startswith(".")),
+        key=lambda item: item.name.lower(),
+    )
+    payload: dict[str, Any] = {
         "path": str(current),
         "name": current.name or str(current),
         "parent": str(current.parent) if current.parent != current else None,
@@ -64,6 +62,25 @@ def list_dirs(request: Request, path: str | None = None) -> dict[str, Any]:
         "dirs": [{"name": item.name, "path": str(item)} for item in children],
         "roots": _drives(),
     }
+    if include_files:
+        executables = sorted(
+            (item for item in items if item.is_file() and item.suffix.lower() == ".exe"),
+            key=lambda item: item.name.lower(),
+        )
+        payload["files"] = [{"name": item.name, "path": str(item)} for item in executables]
+    return payload
+
+
+@router.get("/fs/dirs")
+def list_dirs(request: Request, path: str | None = None) -> dict[str, Any]:
+    """Browse directories so the user can point at a Godot project anywhere on disk."""
+    return _browse(_current_dir(request, path), include_files=False)
+
+
+@router.get("/fs/entries")
+def list_entries(request: Request, path: str | None = None) -> dict[str, Any]:
+    """Directory entries plus ``.exe`` files, for picking a Godot executable."""
+    return _browse(_current_dir(request, path), include_files=True)
 
 
 @router.get("/projects")

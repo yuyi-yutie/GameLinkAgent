@@ -96,6 +96,21 @@ def test_fs_lists_directories_and_flags_a_project(client, workspace):
     assert client.get("/api/fs/dirs", params={"path": str(workspace)}).json()["is_project"] is False
 
 
+def test_fs_entries_include_executables(client, tmp_path):
+    folder = tmp_path / "engines"
+    folder.mkdir()
+    (folder / "Godot_v4.7.2-stable_win64_console.exe").write_text("x", encoding="utf-8")
+    (folder / "notes.txt").write_text("x", encoding="utf-8")
+    (folder / "nested").mkdir()
+
+    payload = client.get("/api/fs/entries", params={"path": str(folder)}).json()
+    assert [item["name"] for item in payload["files"]] == [
+        "Godot_v4.7.2-stable_win64_console.exe"
+    ]
+    assert [item["name"] for item in payload["dirs"]] == ["nested"]
+    assert "files" not in client.get("/api/fs/dirs", params={"path": str(folder)}).json()
+
+
 def test_project_inspection(client, tmp_path):
     payload = client.get("/api/projects", params={"path": str(FIXTURE)}).json()
     assert payload["name"]
