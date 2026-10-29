@@ -7,6 +7,9 @@ build/
 dist/
 .venv/
 venv/
+# Private interpreter downloaded by tools/bootstrap.ps1 when no system Python exists
+/.python/
+/.bootstrap/
 .env
 .pytest_cache/
 .ruff_cache/

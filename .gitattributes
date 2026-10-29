@@ -1,0 +1,4 @@
+# Launchers must keep Windows line endings regardless of the cloning machine's
+# core.autocrlf setting; cmd.exe is unreliable with LF-only batch files.
+*.cmd text eol=crlf
+*.bat text eol=crlf

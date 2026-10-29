@@ -46,7 +46,7 @@ export function DirPicker({ onPick }: Props) {
             if (event.key === "Enter") browse(typed);
           }}
         />
-        <button type="button" className="btn" onClick={() => browse(typed)}>
+        <button type="button" className="btn btn-secondary" onClick={() => browse(typed)}>
           跳转
         </button>
       </div>

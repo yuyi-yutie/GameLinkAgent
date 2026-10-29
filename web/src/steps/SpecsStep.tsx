@@ -60,7 +60,7 @@ export function SpecsStep({ projectPath, specsDir, specs, onNext }: Props) {
         <div className="step-actions">
           <button
             type="button"
-            className="btn"
+            className="btn btn-secondary"
             disabled={job.running}
             onClick={runVerify}
           >

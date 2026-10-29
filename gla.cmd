@@ -1,9 +1,11 @@
 @echo off
 rem GameLink Agent launcher.
 rem
-rem Runs `gla <command>` from the repository root without activating the venv.
-rem On first use (no .venv yet) it creates the virtual environment and installs
-rem the package automatically, so a fresh clone works out of the box.
+rem A fresh clone is runnable with one command: `gla.cmd` (in PowerShell use
+rem `.\gla.cmd`). The first run provisions everything automatically:
+rem   * a usable Python (an existing 3.10+ install, or a private copy in .python)
+rem   * the .venv virtual environment
+rem   * the package with every optional dependency (CLI + local web UI)
 rem
 rem NOTE: messages are intentionally ASCII-only - cmd.exe decodes .cmd files with
 rem the OEM code page, so non-ASCII text would garble on many systems.
@@ -13,48 +15,26 @@ cd /d "%~dp0"
 
 set "VENV_PY=%~dp0.venv\Scripts\python.exe"
 
-if not exist "%VENV_PY%" call :make_venv
-if not exist "%VENV_PY%" exit /b 1
-
-"%VENV_PY%" -c "import gamelink" >nul 2>nul
-if errorlevel 1 call :install
-"%VENV_PY%" -c "import gamelink" >nul 2>nul
-if errorlevel 1 (
-    echo [GameLink Agent] Setup did not complete; see the messages above.
-    exit /b 1
+rem Fast path: an existing venv that can import the full dependency set.
+if exist "%VENV_PY%" (
+    "%VENV_PY%" -c "import gamelink, fastapi, uvicorn" >nul 2>nul
+    if not errorlevel 1 goto :run
 )
 
-if exist "%~dp0.venv\Scripts\gla.exe" (
-    "%~dp0.venv\Scripts\gla.exe" %*
-) else (
-    "%VENV_PY%" -m gamelink %*
-)
+call :setup
+if errorlevel 1 exit /b 1
+
+:run
+"%VENV_PY%" -m gamelink %*
 exit /b %errorlevel%
 
-
-:make_venv
-echo.
-echo [GameLink Agent] First run: creating the virtual environment (.venv) ...
-where python >nul 2>nul
+:setup
+where powershell >nul 2>nul
 if errorlevel 1 (
-    echo [GameLink Agent] ERROR: python was not found on PATH.
-    echo                   Install Python 3.10+ ^(tick "Add python.exe to PATH"^),
-    echo                   then run gla again.
+    echo [GameLink Agent] ERROR: Windows PowerShell was not found.
+    echo                   Install Python 3.10+ from https://www.python.org/downloads/
+    echo                   ^(tick "Add python.exe to PATH"^), then run gla.cmd again.
     exit /b 1
 )
-python -m venv "%~dp0.venv"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\bootstrap.ps1"
 exit /b %errorlevel%
-
-
-:install
-echo [GameLink Agent] Installing dependencies ^(needs network, may take a minute^) ...
-"%VENV_PY%" -m pip install --upgrade pip
-"%VENV_PY%" -m pip install -e .
-if errorlevel 1 (
-    echo [GameLink Agent] ERROR: dependency installation failed.
-    echo                   Run this manually and check the output:
-    echo                       .venv\Scripts\python -m pip install -e .
-    exit /b 1
-)
-echo [GameLink Agent] Setup complete.
-exit /b 0

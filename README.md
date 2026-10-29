@@ -42,6 +42,8 @@ Godot 工程 ──▶ 代码摄入 ──▶ LLM 语义分析 ──▶ 规格�
 │   ├── deploy/                # 导出 headless 服务端 + 生成部署说明
 │   ├── schemas/               # 两份规格的 JSON Schema
 │   └── templates/             # GDScript / 导出预设 / 部署说明与脚本模板
+├── tools/
+│   └── bootstrap.ps1          # 首次运行引导（Python / venv / 依赖）
 ├── examples/
 │   ├── snake-single/          # 单机贪吃蛇（输入夹具）
 │   ├── snake-mp/              # 手工联机版贪吃蛇（Phase 0 产物）
@@ -51,32 +53,47 @@ Godot 工程 ──▶ 代码摄入 ──▶ LLM 语义分析 ──▶ 规格�
 
 ## 快速开始
 
-只需要 **Python 3.10+**（已加入 PATH）。在仓库根目录直接运行 `gla` 即可 —— **首次运行会自动创建 `.venv` 并安装依赖**，无需手动配置。
+把仓库拉到任意一台 Windows 电脑，在仓库根目录运行 `gla.cmd` 即可。**不需要预先安装 Python，也不需要手动建 venv 或装依赖。**
 
-```bash
-cd C:\Users\yy197\Documents\GitHub\GameLinkAgent
-gla                                             # 打开欢迎界面（首次会提示输入 LLM API key）
-
-# 之后可直接执行命令（API key 已存用户目录，无需每次输入）
-gla doctor                                      # 检查环境（Python / Godot / LLM / 部署）
-gla inspect examples/snake-single               # 查看工程摘要
-gla analyze examples/snake-single               # LLM 分析 → 中文报告（写 specs/snake-single-report.md）
-
-# 需要继续生成服务端时，让 analyze 一并导出规格：
-gla analyze examples/snake-single --specs       # 额外写出 protocol.spec.yaml / server-architecture.spec.yaml
-gla generate examples/snake-single --specs specs --out out/snake-gen
-gla verify examples/snake-mp --specs specs      # 规格 ↔ 实现一致性校验
-gla deploy out/snake-gen                        # 导出 headless 服务端 + 部署说明（out/snake-gen/dist）
+```bat
+git clone https://github.com/yuyi-yutie/GameLinkAgent.git
+cd GameLinkAgent
+gla.cmd
 ```
 
-> 想手动初始化、或需要跑测试/开发（含 pytest、ruff），用：
-> `python -m venv .venv` 然后 `.venv\Scripts\python -m pip install -e ".[dev]"`
+> PowerShell 用户请写 `.\gla.cmd`（PowerShell 不会从当前目录查找命令）。
+
+首次运行会自动完成三件事：
+
+1. **准备 Python**：优先复用系统里已有的 3.10–3.14；找不到就从 python.org 下载官方安装器（校验签名后静默安装一份到仓库内的 `.python/`，不改系统 PATH，也不需要管理员权限）。
+2. **创建 `.venv`**：如果 `.venv` 是从别的机器拷来的、已经失效，会自动删除重建。
+3. **安装全功能依赖**：CLI + Web 界面（`.[web]`），所以 `gla.cmd web` 首次即可用。
+
+然后进入欢迎界面，首次会提示输入 LLM API key（保存在用户目录，不随仓库走）。之后日常使用：
+
+```bat
+gla.cmd                                         # 打开欢迎界面（首次会提示输入 LLM API key）
+gla.cmd doctor                                  # 检查环境（Python / Godot / LLM / 部署）
+gla.cmd inspect examples/snake-single           # 查看工程摘要
+gla.cmd analyze examples/snake-single           # LLM 分析 → 中文报告（写 specs/snake-single-report.md）
+
+# 需要继续生成服务端时，让 analyze 一并导出规格：
+gla.cmd analyze examples/snake-single --specs   # 额外写出 protocol.spec.yaml / server-architecture.spec.yaml
+gla.cmd generate examples/snake-single --specs specs --out out/snake-gen
+gla.cmd verify examples/snake-mp --specs specs  # 规格 ↔ 实现一致性校验
+gla.cmd deploy out/snake-gen                    # 导出 headless 服务端 + 部署说明（out/snake-gen/dist）
+```
+
+> 首次运行需要网络（下载 Python 和依赖）。**Godot 只有 `verify` / `deploy` 需要**，未配置时其他命令照常可用（用 `gla.cmd config` 配置引擎路径）。
+>
+> 想手动初始化、或需要跑测试/开发（含 pytest、ruff），先激活环境：`.venv\Scripts\activate`，然后
+> `.venv\Scripts\python -m pip install -e ".[dev]"`。
 
 ### 欢迎界面
 
-在仓库根目录直接输入 `gla`（不带参数）会打开欢迎界面：显示版本与**环境状态**（LLM / Godot / 配置文件路径），按「分析 / 生成与部署 / 配置与工具」分组列出全部命令，并在**首次使用时提示你输入 LLM API key**。
+在仓库根目录直接运行 `gla.cmd`（不带参数）会打开欢迎界面：显示版本与**环境状态**（LLM / Godot / 配置文件路径），按「分析 / 生成与部署 / 配置与工具」分组列出全部命令，并在**首次使用时提示你输入 LLM API key**。
 
-- 界面里可直接输入命令，例如 `analyze examples/snake-single`（等价于 `gla analyze examples/snake-single`）。
+- 界面里可直接输入命令，例如 `analyze examples/snake-single`（等价于 `gla.cmd analyze examples/snake-single`）。
 - `help` 重看命令列表；`help <命令>` 看某命令的详细用法（用法 / 说明 / 示例），例如 `help analyze`；`exit` 退出。
 - 配置保存在**用户目录**，不写入仓库：
   - Windows：`%APPDATA%\GameLinkAgent\config.json`
@@ -85,15 +102,16 @@ gla deploy out/snake-gen                        # 导出 headless 服务端 + �
 
 > 完整命令参考见 [`docs/commands.md`](./docs/commands.md)；命令行里随时可用 `gla help`、`gla help <命令>` 或 `gla <命令> --help`（后者列出全部选项）。
 
-> `gla` 是 `gamelink` 的等价别名；`gla.cmd` 会切到仓库根目录再运行，所以 `.env` 和相对路径都能正常解析。
+> `gla.cmd` 会切到仓库根目录再运行，所以 `.env` 和相对路径都能正常解析；激活 `.venv` 后也可以直接使用 `gla` / `gamelink` 命令。
 >
 > `gla analyze` 运行时会显示「正在调用 LLM 分析工程…」的等待动画与进度；加 `--stream` 可**实时打印模型的推理过程**；加 `-i` 可交互式选择生成选项。默认只产出 **Markdown 报告**（`specs/<工程名>-report.md`），加 `--specs` 才额外导出两份规格供 `generate` 使用。
 
 ## 环境要求
 
-- Python ≥ 3.10（`gla` 首次运行会自动创建 `.venv` 并安装依赖）
-- **Godot 4.x**（分析校验与导出服务端需要）。本机为 **Godot 4.7.2**，位于 `C:\D\GodotEngine`；
-  在 `.env` 中设置 `GAMELINK_GODOT_BIN` 指向引擎可执行文件即可（建议用 `*_console.exe`）。
+- Windows 10/11（启动器为 `gla.cmd`，依赖系统自带的 PowerShell）
+- 首次运行需要网络：没有 Python 时会自动下载 3.12 并安装到仓库内，依赖从 PyPI 安装
+- **Godot 4.x**：仅 `verify` / `deploy` 需要。用 `gla.cmd config` 选择引擎路径，或设置
+  `GAMELINK_GODOT_BIN`（建议用 `*_console.exe`）。
 - 一台 Windows 云服务器（部署目标）
 
 ## 许可证

@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: Software Development :: Code Generators",
 ]
 dependencies = [
-    "PyYAML>=6.0.2",
+    "PyYAML>=6.0.3",
     "jsonschema>=4.21",
     "typer>=0.12",
     "rich>=13.7",

@@ -71,7 +71,7 @@ export function JobConsole({
   const streamed = stream.reasoning.length + stream.content.length;
 
   return (
-    <section className="console">
+    <section className={`console${running ? " console-running" : ""}`}>
       <header className="console-head">
         <span className={`pill pill-${status}`}>{statusText(status)}</span>
         <span className="console-stage">{stageLabel}</span>

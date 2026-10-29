@@ -60,7 +60,7 @@ export function StatusBar({ health, onOpenConfig }: Props) {
         )}
       </div>
 
-      <button type="button" className="btn" onClick={onOpenConfig}>
+      <button type="button" className="btn btn-accent" onClick={onOpenConfig}>
         配置
       </button>
     </header>
